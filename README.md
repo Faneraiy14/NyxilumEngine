@@ -4,7 +4,17 @@
 [NyxilumLang](https://github.com/Faneraiy14/NyxilumLang) - без
 вбудовування чужої мови скриптів. GameObject/Component-стиль,
 "віддалено схоже на Unity за структурою" - не за амбіцією рівня.
-Windows-only (успадковано від 2D-графіки NyxilumLang - Windows Forms).
+
+**Чесно про платформи - не "Windows-only" суцільно, а по частинах:**
+ЛОГІКА рушія (`GameObject`/`Scene`/AABB-колізії/`self.go`/
+`updateAllScripts`/`checkCollisions`) - звичайний NyxilumLang-код, без
+жодної залежності від Windows - працює й ПЕРЕВІРЕНА ЖИВЦЕМ на Linux
+(`tests/headless_logic_test.nx`, без вікна). МАЛЮВАННЯ/ВІКНО
+(`createCanvas`/`drawRect`/... і, відповідно, `drawAll`/фактичний
+запуск ГРИ) сидить на Windows Forms (`GraphicsModule.cs` у
+NyxilumLang, `#if WINDOWS`) - ось ЦЯ частина реально Windows-only.
+Тобто: сам рушій (як бібліотека логіки) кросплатформний, а ГРА
+(`examples/dodge.nx`, з реальним вікном на екрані) - лише Windows.
 
 Повний план (архітектура, свідомі обмеження v1):
 [план у сесії 22.09.2026](https://github.com/Faneraiy14/NyxilumLang/blob/main/NATIVE_ROADMAP.md)
@@ -48,8 +58,9 @@ hero.addScript(Mover { go: 0, speed: 100 })
 
 ## Чесно про v1 (не приховано)
 
-- Лише 2D, лише Windows (успадковано від NyxilumLang - `#if WINDOWS`
-  Windows Forms).
+- Лише 2D. Реальна ГРА (вікно/малювання/звук) - лише Windows
+  (успадковано від NyxilumLang - `#if WINDOWS` Windows Forms), АЛЕ
+  логіка рушія (без рендеру) - кросплатформна, дивись розділ вище.
 - Колізії - лише AABB (прямокутне перетинання), без гравітації/
   імпульсів за замовчуванням.
 - `Renderer` - ОДИН struct із полем `kind` ("rect"/"circle"/
