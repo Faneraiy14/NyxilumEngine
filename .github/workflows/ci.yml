@@ -58,9 +58,17 @@ jobs:
       # знову перевірена (перша версія без -p:EnableWindowsTargeting
       # реально провалила CI-запуск - не здогадка заздалегідь).
       - name: Build nx CLI
-        run: |
-          dotnet build NyxilumLang/src/NyxilumLang -f net10.0 -c Release -p:EnableWindowsTargeting=true
-          echo "$(pwd)/NyxilumLang/src/NyxilumLang/bin/Release/net10.0" >> "$GITHUB_PATH"
+        run: dotnet build NyxilumLang/src/NyxilumLang -f net10.0 -c Release -p:EnableWindowsTargeting=true
+
+      # Бінарник насправді зветься "Nx" (з великої - AssemblyName у
+      # NyxilumLang.csproj), НЕ "nx" - Linux чутливий до регістру,
+      # додавання теки в PATH саме тому НЕ спрацювало б ("nx: command
+      # not found" - реальна помилка з попереднього запуску цього CI,
+      # не здогадка). anylint's bin/anylint сам підтримує NX_EXE
+      # (getenv('NX_EXE') ?: 'nx') - той самий механізм, що вже
+      # використовує NyxilumProviderTest у самому репозиторії anylint.
+      - name: Встановити NX_EXE
+        run: echo "NX_EXE=$(pwd)/NyxilumLang/src/NyxilumLang/bin/Release/net10.0/Nx" >> "$GITHUB_ENV"
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -70,8 +78,8 @@ jobs:
         run: composer install --no-interaction --prefer-dist
         working-directory: anylint
 
-      - name: Перевірити, що 'nx' реально на PATH
-        run: nx --version
+      - name: Перевірити, що NX_EXE реально працює
+        run: "$NX_EXE --version"
 
       - name: anylint (увесь репозиторій - lib/examples/tests)
         # bin/anylint приймає ЛИШЕ ОДИН шлях (не декілька аргументів) -
