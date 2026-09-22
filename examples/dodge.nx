@@ -14,7 +14,7 @@
 import "../lib/engine.nx" {
     GameObject, createGameObject, Renderer, rectRenderer,
     BoxCollider, boxCollider, Scene, createScene,
-    aabbOverlap, notifyCollision, drawRenderer
+    updateAllScripts, checkCollisions, drawAll
 }
 
 var CANVAS_W = 480
@@ -103,8 +103,9 @@ func main() {
     director.addScript(spawner)
     scene.addObject(director)
 
-    // Той самий цикл, що Engine.run() (lib/engine.nx) - АЛЕ
-    // інлайнований тут, БЕЗ виклику Engine.run() - потрібно
+    // Той самий крок кадру, що Engine.run() (lib/engine.nx) -
+    // ПЕРЕВИКОРИСТОВУЄ ті самі 3 функції (updateAllScripts/
+    // checkCollisions/drawAll), а НЕ Engine.run() напряму - потрібно
     // перевіряти GAME_OVER МІЖ кадрами (гро-специфічний стан
     // "програш"), а Engine.run() (свідомо мінімальний v1) не має
     // callback-механізму для дострокового виходу. Engine.run()
@@ -112,47 +113,10 @@ func main() {
     // чесний, не прихований компроміс v1.
     while (!canvasShouldClose(canvas) && !GAME_OVER) {
         var dt = 0.016
-        var i = 0
-        while i < len(scene.objects) {
-            var go = scene.objects[i]
-            if (go.active) {
-                var j = 0
-                while j < len(go.scripts) {
-                    go.scripts[j].update(dt, canvas)
-                    j = j + 1
-                }
-            }
-            i = i + 1
-        }
-
-        i = 0
-        while i < len(scene.objects) {
-            var a = scene.objects[i]
-            if (a.active && a.collider != 0) {
-                var k = i + 1
-                while k < len(scene.objects) {
-                    var b = scene.objects[k]
-                    if (b.active && b.collider != 0) {
-                        if (aabbOverlap(a.x, a.y, a.collider.w, a.collider.h, b.x, b.y, b.collider.w, b.collider.h)) {
-                            notifyCollision(a, b)
-                            notifyCollision(b, a)
-                        }
-                    }
-                    k = k + 1
-                }
-            }
-            i = i + 1
-        }
-
+        updateAllScripts(scene, dt, canvas)
+        checkCollisions(scene)
         clearCanvas(canvas, 15, 15, 25)
-        i = 0
-        while i < len(scene.objects) {
-            var go2 = scene.objects[i]
-            if (go2.active) {
-                drawRenderer(canvas, go2)
-            }
-            i = i + 1
-        }
+        drawAll(canvas, scene)
         drawText(canvas, "Рахунок: " + toString(SCORE), 10, 10, 16, 255, 255, 255)
         presentCanvas(canvas)
     }

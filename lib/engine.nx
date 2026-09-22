@@ -140,6 +140,9 @@ func notifyCollision(go, other) {
         try {
             go.scripts[i].onCollide(other)
         } catch (e) {
+            // Навмисно порожньо - onCollide опційний (не кожен скрипт
+            // його має), "метод не знайдено" тут - ОЧІКУВАНИЙ, не
+            // помилковий випадок.
         }
         i = i + 1
     }
@@ -161,6 +164,66 @@ func drawRenderer(canvas, go) {
     }
 }
 
+// Три кроки одного кадру, винесені в окремі функції (не лише заради
+// Engine.run() - examples/dodge.nx ПОТРЕБУЄ власного циклу через
+// game-over умову, якої Engine.run() не знає, тому теж викликає САМЕ
+// ЦІ функції напряму, замість дублювати їхній код руками вдруге).
+// Заразом - guard-return через "continue" замість вкладеного "if"
+// тримає глибину вкладеності керуючих конструкцій під контролем
+// (anylint's deep-nesting rule зловив 5-6 рівнів у ПОПЕРЕДНІЙ версії
+// цього файлу з вкладеними if усередині while - живий доказ, чому
+// цей стиль кращий, не просто смак).
+
+func updateAllScripts(scene, dt, canvas) {
+    var i = 0
+    while i < len(scene.objects) {
+        var go = scene.objects[i]
+        i = i + 1
+        if (!go.active) {
+            continue
+        }
+        var j = 0
+        while j < len(go.scripts) {
+            go.scripts[j].update(dt, canvas)
+            j = j + 1
+        }
+    }
+}
+
+func checkCollisions(scene) {
+    var i = 0
+    while i < len(scene.objects) {
+        var a = scene.objects[i]
+        i = i + 1
+        if (!a.active || a.collider == 0) {
+            continue
+        }
+        var k = i
+        while k < len(scene.objects) {
+            var b = scene.objects[k]
+            k = k + 1
+            if (!b.active || b.collider == 0) {
+                continue
+            }
+            if (aabbOverlap(a.x, a.y, a.collider.w, a.collider.h, b.x, b.y, b.collider.w, b.collider.h)) {
+                notifyCollision(a, b)
+                notifyCollision(b, a)
+            }
+        }
+    }
+}
+
+func drawAll(canvas, scene) {
+    var i = 0
+    while i < len(scene.objects) {
+        var go = scene.objects[i]
+        i = i + 1
+        if (go.active) {
+            drawRenderer(canvas, go)
+        }
+    }
+}
+
 struct Engine {
     // Головний цикл (за планом) - опитати ввід (усередині кожного
     // update(dt, canvas) скрипта, дивись коментар над Renderer вище)
@@ -175,48 +238,10 @@ struct Engine {
     func run(canvas, scene) {
         while (!canvasShouldClose(canvas)) {
             var dt = 0.016
-
-            var i = 0
-            while i < len(scene.objects) {
-                var go = scene.objects[i]
-                if (go.active) {
-                    var j = 0
-                    while j < len(go.scripts) {
-                        go.scripts[j].update(dt, canvas)
-                        j = j + 1
-                    }
-                }
-                i = i + 1
-            }
-
-            i = 0
-            while i < len(scene.objects) {
-                var a = scene.objects[i]
-                if (a.active && a.collider != 0) {
-                    var k = i + 1
-                    while k < len(scene.objects) {
-                        var b = scene.objects[k]
-                        if (b.active && b.collider != 0) {
-                            if (aabbOverlap(a.x, a.y, a.collider.w, a.collider.h, b.x, b.y, b.collider.w, b.collider.h)) {
-                                notifyCollision(a, b)
-                                notifyCollision(b, a)
-                            }
-                        }
-                        k = k + 1
-                    }
-                }
-                i = i + 1
-            }
-
+            updateAllScripts(scene, dt, canvas)
+            checkCollisions(scene)
             clearCanvas(canvas, 0, 0, 0)
-            i = 0
-            while i < len(scene.objects) {
-                var go2 = scene.objects[i]
-                if (go2.active) {
-                    drawRenderer(canvas, go2)
-                }
-                i = i + 1
-            }
+            drawAll(canvas, scene)
             presentCanvas(canvas)
         }
     }

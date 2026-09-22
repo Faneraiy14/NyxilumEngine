@@ -22,12 +22,14 @@ struct Bouncer {
     }
 }
 
+// БЕЗ update() (навмисно) - цей скрипт існує ЛИШЕ щоб перевірити, що
+// notifyCollision тихо пропускає скрипти БЕЗ onCollide (нижче) - update()
+// тут ніде НЕ викликається (цей тест не викликає updateAllScripts/
+// Engine.run()), тож порожній update() був би зайвим кодом, а не
+// потрібною частиною "конвенції компонента".
 struct SilentScript {
     go: any
     tag: string
-
-    func update(dt, canvas) {
-    }
 }
 
 func main() {

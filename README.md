@@ -65,9 +65,10 @@ hero.addScript(Mover { go: 0, speed: 100 })
   (`loadImage`/`drawImage`, вже в NyxilumLang).
 - `Engine.run(canvas, scene)` - мінімальний головний цикл БЕЗ
   callback-механізму для дострокового виходу (напр. game-over) -
-  `examples/dodge.nx` свідомо НЕ використовує `Engine.run()`, а
-  інлайнує той самий цикл із власною умовою виходу - задокументовано
-  в самому прикладі.
+  `examples/dodge.nx` свідомо НЕ викликає `Engine.run()` напряму, а
+  перевикористовує ті самі три функції кроку кадру
+  (`updateAllScripts`/`checkCollisions`/`drawAll`) у власному циклі з
+  додатковою умовою виходу - задокументовано в самому прикладі.
 
 ## Перевірено
 
