@@ -1,0 +1,227 @@
+// NyxilumEngine - Крок B (22.09.2026, план: /home/sviat/.claude/plans/sparkling-soaring-pine.md)
+//
+// GameObject/Component-стиль, "віддалено схоже на Unity за
+// структурою" - не за амбіцією рівня. Побудовано ЛИШЕ на тому, що
+// мова УЖЕ має (struct + методи, VM - не нативний компілятор, у якого
+// взагалі немає графіки) - жодних змін самої мови NyxilumLang для
+// цього не знадобилось.
+//
+// "Компонент" тут - НЕ окремий механізм мови, а КОНВЕНЦІЯ: будь-який
+// struct із методом update(dt, canvas) (і опційно onCollide(other)) -
+// рушій сам викликає ці методи щокадру. Duck typing (перевірено
+// живцем: метод шукається за ФАКТИЧНИМ типом структури під час
+// виконання, незалежно від того, що поле оголошене як "any") - той
+// самий механізм, що GameObject.scripts[i].update(...) використовує
+// нижче.
+//
+// ЧОМУ update(dt, canvas), а НЕ update(dt) (як буквально написано в
+// плані) - реальна потреба скрипту (напр. керування гравцем) читати
+// ввід (isKeyDown(canvas, ...)) - без доступу до canvas усередині
+// update() це було б неможливо. Свідоме, задокументоване відхилення
+// від букви плану заради реальної робочої потреби.
+//
+// ЧОМУ Renderer - ОДИН struct із полем "kind" (не окремі
+// ShapeRenderer/SpriteRenderer типи, як у плані буквально) - мова НЕ
+// дає typeOf()-подібної функції, що розрізняла б КОНКРЕТНИЙ тип
+// структури (typeOf() для будь-якого struct повертає просто "struct",
+// перевірено живцем) - самоопис через рядкове поле "kind" ("rect"/
+// "circle"/"sprite") - той самий tagged-union патерн, що й раніше
+// вирішував подібні задачі в цьому проєкті.
+
+struct GameObject {
+    name: string
+    x: number
+    y: number
+    rotation: number
+    scale: number
+    active: bool
+    renderer: any   // Renderer{} нижче, чи 0 - без візуалізації
+    collider: any   // BoxCollider{} нижче, чи 0 - без колізій
+    scripts: array  // довільні struct'и з update(dt, canvas)/опційно onCollide(other)
+
+    // addScript САМ проставляє s.go = self (кожен скрипт-struct МАЄ
+    // оголосити ВЛАСНЕ поле "go: any") - інакше скрипт узагалі НЕ мав
+    // би способу дістатись до x/y/renderer СВОГО ж GameObject'а
+    // (напр. рух гравця вліво/вправо міняє go.x, не поле самого
+    // скрипта) - реальна прогалина в буквальному тексті плану
+    // ("update(self, dt)" без пояснення, як скрипт бачить власника),
+    // знайдена й закрита під час написання прикладу-гри.
+    func addScript(s) {
+        s.go = self
+        append(self.scripts, s)
+    }
+}
+
+func createGameObject(name, x, y) {
+    return GameObject {
+        name: name, x: x, y: y, rotation: 0, scale: 1, active: true,
+        renderer: 0, collider: 0, scripts: []
+    }
+}
+
+struct Renderer {
+    kind: string    // "rect" | "circle" | "sprite"
+    w: number       // rect: ширина; circle: діаметр (радіус = w/2); sprite: ширина
+    h: number       // rect/sprite: висота; circle: не використовується
+    r: number
+    g: number
+    b: number
+    image: any      // sprite: результат loadImage(); інакше 0
+}
+
+func rectRenderer(w, h, r, g, b) {
+    return Renderer { kind: "rect", w: w, h: h, r: r, g: g, b: b, image: 0 }
+}
+
+func circleRenderer(diameter, r, g, b) {
+    return Renderer { kind: "circle", w: diameter, h: 0, r: r, g: g, b: b, image: 0 }
+}
+
+func spriteRenderer(image, w, h) {
+    return Renderer { kind: "sprite", w: w, h: h, r: 0, g: 0, b: 0, image: image }
+}
+
+// AABB - найпростіший робочий варіант колізій (свідомо, чесно, з
+// плану - без гравітації/imпульсів за замовчуванням).
+struct BoxCollider {
+    w: number
+    h: number
+}
+
+func boxCollider(w, h) {
+    return BoxCollider { w: w, h: h }
+}
+
+struct Scene {
+    objects: array
+
+    func addObject(go) {
+        append(self.objects, go)
+    }
+
+    func findByName(name) {
+        var i = 0
+        while i < len(self.objects) {
+            if (self.objects[i].name == name) {
+                return self.objects[i]
+            }
+            i = i + 1
+        }
+        return 0
+    }
+}
+
+func createScene() {
+    return Scene { objects: [] }
+}
+
+// (x,y) - ЦЕНТР прямокутника (не top-left) - природніше для ігрового
+// коду, де GameObject.x/y теж центр (rotation/scale навколо центру).
+func aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+    var aLeft = ax - aw / 2
+    var aRight = ax + aw / 2
+    var aTop = ay - ah / 2
+    var aBottom = ay + ah / 2
+    var bLeft = bx - bw / 2
+    var bRight = bx + bw / 2
+    var bTop = by - bh / 2
+    var bBottom = by + bh / 2
+    return aLeft < bRight && aRight > bLeft && aTop < bBottom && aBottom > bTop
+}
+
+// Скрипт може не мати onCollide (опційний за планом) - виклик
+// обгорнуто в try/catch (перевірено живцем: виклик неіснуючого
+// методу структури кидає перехоплювану помилку VM, не крашить
+// процес) замість вимагати typeOf-подібну перевірку, якої мова не
+// дає.
+func notifyCollision(go, other) {
+    var i = 0
+    while i < len(go.scripts) {
+        try {
+            go.scripts[i].onCollide(other)
+        } catch (e) {
+        }
+        i = i + 1
+    }
+}
+
+func drawRenderer(canvas, go) {
+    if (go.renderer == 0) {
+        return
+    }
+    var rnd = go.renderer
+    if (rnd.kind == "rect") {
+        drawRect(canvas, go.x - rnd.w / 2, go.y - rnd.h / 2, rnd.w, rnd.h, rnd.r, rnd.g, rnd.b)
+    } else {
+        if (rnd.kind == "circle") {
+            drawCircle(canvas, go.x, go.y, rnd.w / 2, rnd.r, rnd.g, rnd.b)
+        } else {
+            drawImage(canvas, rnd.image, go.x - rnd.w / 2, go.y - rnd.h / 2, rnd.w, rnd.h)
+        }
+    }
+}
+
+struct Engine {
+    // Головний цикл (за планом) - опитати ввід (усередині кожного
+    // update(dt, canvas) скрипта, дивись коментар над Renderer вище)
+    // -> порахувати dt -> update кожного активного об'єкта -> AABB-
+    // колізії -> clearCanvas -> намалювати всіх активних renderer'ів
+    // -> presentCanvas -> вихід, коли canvasShouldClose.
+    //
+    // dt - ФІКСОВАНИЙ крок (0.016 ~ 60 кадрів/с), НЕ реальний
+    // виміряний час між кадрами - мова не дає таймера високої
+    // роздільності у VM (лише date()-подібні секундні функції) - той
+    // самий "чесно, не приховано" компроміс, що весь план.
+    func run(canvas, scene) {
+        while (!canvasShouldClose(canvas)) {
+            var dt = 0.016
+
+            var i = 0
+            while i < len(scene.objects) {
+                var go = scene.objects[i]
+                if (go.active) {
+                    var j = 0
+                    while j < len(go.scripts) {
+                        go.scripts[j].update(dt, canvas)
+                        j = j + 1
+                    }
+                }
+                i = i + 1
+            }
+
+            i = 0
+            while i < len(scene.objects) {
+                var a = scene.objects[i]
+                if (a.active && a.collider != 0) {
+                    var k = i + 1
+                    while k < len(scene.objects) {
+                        var b = scene.objects[k]
+                        if (b.active && b.collider != 0) {
+                            if (aabbOverlap(a.x, a.y, a.collider.w, a.collider.h, b.x, b.y, b.collider.w, b.collider.h)) {
+                                notifyCollision(a, b)
+                                notifyCollision(b, a)
+                            }
+                        }
+                        k = k + 1
+                    }
+                }
+                i = i + 1
+            }
+
+            clearCanvas(canvas, 0, 0, 0)
+            i = 0
+            while i < len(scene.objects) {
+                var go2 = scene.objects[i]
+                if (go2.active) {
+                    drawRenderer(canvas, go2)
+                }
+                i = i + 1
+            }
+            presentCanvas(canvas)
+        }
+    }
+}
+
+func createEngine() {
+    return Engine {}
+}

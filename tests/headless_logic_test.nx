@@ -1,0 +1,74 @@
+// Headless тест рушія (GameObject/Scene/колізії/self.go) - БЕЗ canvas,
+// запускається на Linux цією сесією (на відміну від examples/dodge.nx,
+// що потребує Windows Forms). Перевіряє суто ЛОГІКУ (не рендер).
+
+import "../lib/engine.nx" {
+    GameObject, createGameObject, BoxCollider, boxCollider,
+    Scene, createScene, aabbOverlap, notifyCollision
+}
+
+struct Bouncer {
+    go: any
+    vx: number
+    hitCount: number
+
+    func update(dt, canvas) {
+        self.vx = self.vx + dt
+    }
+
+    func onCollide(other) {
+        self.hitCount = self.hitCount + 1
+        print("зіткнення з " + other.name + "! hitCount=" + toString(self.hitCount))
+    }
+}
+
+struct SilentScript {
+    go: any
+    tag: string
+
+    func update(dt, canvas) {
+    }
+}
+
+func main() {
+    var fail = 0
+
+    var scene = createScene()
+    var a = createGameObject("A", 0, 0)
+    var b = createGameObject("B", 5, 0)
+    a.collider = boxCollider(10, 10)
+    b.collider = boxCollider(10, 10)
+    var bouncerA = Bouncer { go: 0, vx: 0, hitCount: 0 }
+    a.addScript(bouncerA)
+    var silent = SilentScript { go: 0, tag: "no-oncollide" }
+    b.addScript(silent)
+    scene.addObject(a)
+    scene.addObject(b)
+
+    if (len(scene.objects) != 2) { fail = fail + 1; print("FAIL: scene.objects довжина") }
+    var found = scene.findByName("B")
+    if (found.name != "B") { fail = fail + 1; print("FAIL: findByName") }
+
+    if (aabbOverlap(0, 0, 10, 10, 5, 0, 10, 10) != true) { fail = fail + 1; print("FAIL: overlap мав бути true") }
+    if (aabbOverlap(0, 0, 10, 10, 100, 0, 10, 10) != false) { fail = fail + 1; print("FAIL: overlap мав бути false") }
+
+    bouncerA.update(0.016, 0)
+    if (bouncerA.vx != 0.016) { fail = fail + 1; print("FAIL: bouncerA.vx") }
+
+    // self.go - посилання на власника, проставлене addScript()
+    var mover = a.scripts[0]
+    if (mover.go.name != "A") { fail = fail + 1; print("FAIL: self.go не вказує на власника") }
+
+    // notifyCollision - викликає onCollide, коли є; тихо пропускає,
+    // коли немає (try/catch у engine.nx)
+    notifyCollision(a, b)
+    notifyCollision(b, a)
+    if (bouncerA.hitCount != 1) { fail = fail + 1; print("FAIL: hitCount після зіткнення") }
+
+    if (fail == 0) {
+        print("УСІ ПЕРЕВІРКИ ПРОЙШЛИ")
+    } else {
+        print("ПРОВАЛЕНО ПЕРЕВІРОК: " + toString(fail))
+    }
+}
+main()

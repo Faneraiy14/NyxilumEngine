@@ -1,0 +1,165 @@
+// NyxilumEngine - приклад-гра "Ухилення" (Крок B плану, доказ, що
+// рушій реально працює, не лише компілюється). Гравець рухається
+// вліво/вправо, ухиляючись від блоків, що падають зверху - той самий
+// принцип, що native-examples/ у репозиторії NyxilumLang (постійне
+// місце в репо, не одноразовий сесійний файл).
+//
+// Windows-only (createCanvas/... з GraphicsModule.cs) - написано й
+// синтаксично перевірено (nx check) цією сесією, ЛОГІКА рушія
+// (GameObject/Scene/колізії/update/self.go) перевірена ОКРЕМО,
+// headless, на Linux (без canvas) - живий запуск гри З ВІКНОМ
+// потребує Windows-машини Sviatoslav'а, НЕ побачено власними очима
+// цією сесією.
+
+import "../lib/engine.nx" {
+    GameObject, createGameObject, Renderer, rectRenderer,
+    BoxCollider, boxCollider, Scene, createScene,
+    aabbOverlap, notifyCollision, drawRenderer
+}
+
+var CANVAS_W = 480
+var CANVAS_H = 640
+var PLAYER_SPEED = 300
+var FALL_SPEED = 180
+var SPAWN_EVERY = 45     // кадрів (~0.75с при 60 fps) між новими блоками
+var GAME_OVER = false
+var SCORE = 0
+
+// self.go - GameObject-власник (проставляється addScript() у
+// engine.nx) - "self" тут стосується цього PlayerController-скрипта,
+// а НЕ його GameObject'а - self.go.x/y - позиція ГРАВЦЯ.
+struct PlayerController {
+    go: any
+
+    func update(dt, canvas) {
+        if (isKeyDown(canvas, "Left")) {
+            self.go.x = self.go.x - PLAYER_SPEED * dt
+        }
+        if (isKeyDown(canvas, "Right")) {
+            self.go.x = self.go.x + PLAYER_SPEED * dt
+        }
+        if (self.go.x < 20) {
+            self.go.x = 20
+        }
+        if (self.go.x > CANVAS_W - 20) {
+            self.go.x = CANVAS_W - 20
+        }
+    }
+
+    func onCollide(other) {
+        GAME_OVER = true
+    }
+}
+
+struct Faller {
+    go: any
+
+    func update(dt, canvas) {
+        self.go.y = self.go.y + FALL_SPEED * dt
+        if (self.go.y > CANVAS_H + 20) {
+            self.go.active = false
+            SCORE = SCORE + 1
+        }
+    }
+}
+
+// Director - НЕ звичайний ігровий об'єкт, а "порожній" GameObject,
+// що лише СПАВНИТЬ нові блоки-Faller'и через власний скрипт -
+// scene.addObject() з СЕРЕДИНИ update() працює (структури -
+// посилання, той самий scene бачить зміну) - перевірено живцем
+// headless-тестом окремо від цього файлу.
+struct Spawner {
+    scene: any
+    frameCount: number
+
+    func update(dt, canvas) {
+        self.frameCount = self.frameCount + 1
+        if (self.frameCount >= SPAWN_EVERY) {
+            self.frameCount = 0
+            var fx = randomInt(30, CANVAS_W - 30)
+            var block = createGameObject("block", fx, -20)
+            block.renderer = rectRenderer(30, 30, 220, 80, 80)
+            block.collider = boxCollider(30, 30)
+            var faller = Faller { go: 0 }
+            block.addScript(faller)
+            self.scene.addObject(block)
+        }
+    }
+}
+
+func main() {
+    var canvas = createCanvas("NyxilumEngine - Ухилення", CANVAS_W, CANVAS_H)
+    var scene = createScene()
+
+    var player = createGameObject("player", CANVAS_W / 2, CANVAS_H - 40)
+    player.renderer = rectRenderer(40, 20, 80, 200, 255)
+    player.collider = boxCollider(40, 20)
+    var pc = PlayerController { go: 0 }
+    player.addScript(pc)
+    scene.addObject(player)
+
+    var director = createGameObject("director", 0, 0)
+    var spawner = Spawner { scene: scene, frameCount: 0 }
+    director.addScript(spawner)
+    scene.addObject(director)
+
+    // Той самий цикл, що Engine.run() (lib/engine.nx) - АЛЕ
+    // інлайнований тут, БЕЗ виклику Engine.run() - потрібно
+    // перевіряти GAME_OVER МІЖ кадрами (гро-специфічний стан
+    // "програш"), а Engine.run() (свідомо мінімальний v1) не має
+    // callback-механізму для дострокового виходу. Engine.run()
+    // лишається доречним для ПРОСТІШИХ сцен без game-over умови -
+    // чесний, не прихований компроміс v1.
+    while (!canvasShouldClose(canvas) && !GAME_OVER) {
+        var dt = 0.016
+        var i = 0
+        while i < len(scene.objects) {
+            var go = scene.objects[i]
+            if (go.active) {
+                var j = 0
+                while j < len(go.scripts) {
+                    go.scripts[j].update(dt, canvas)
+                    j = j + 1
+                }
+            }
+            i = i + 1
+        }
+
+        i = 0
+        while i < len(scene.objects) {
+            var a = scene.objects[i]
+            if (a.active && a.collider != 0) {
+                var k = i + 1
+                while k < len(scene.objects) {
+                    var b = scene.objects[k]
+                    if (b.active && b.collider != 0) {
+                        if (aabbOverlap(a.x, a.y, a.collider.w, a.collider.h, b.x, b.y, b.collider.w, b.collider.h)) {
+                            notifyCollision(a, b)
+                            notifyCollision(b, a)
+                        }
+                    }
+                    k = k + 1
+                }
+            }
+            i = i + 1
+        }
+
+        clearCanvas(canvas, 15, 15, 25)
+        i = 0
+        while i < len(scene.objects) {
+            var go2 = scene.objects[i]
+            if (go2.active) {
+                drawRenderer(canvas, go2)
+            }
+            i = i + 1
+        }
+        drawText(canvas, "Рахунок: " + toString(SCORE), 10, 10, 16, 255, 255, 255)
+        presentCanvas(canvas)
+    }
+
+    if (GAME_OVER) {
+        print("Гра закінчена! Рахунок: " + toString(SCORE))
+    }
+    closeCanvas(canvas)
+}
+main()
