@@ -25,6 +25,18 @@ jobs:
           repository: Faneraiy14/NyxilumLang
           path: NyxilumLang
 
+      # NyxilumLang.csproj має ProjectReference на сестринський
+      # репозиторій NyxilumDb (../../../NyxilumDb/... відносно
+      # NyxilumLang/src/NyxilumLang/) - без нього "dotnet build"
+      # падає з "project was not found" (реальна помилка, спіймана ПІД
+      # ЧАС першого запуску цього CI) - той самий сусідній-репозиторій
+      # лейаут, що на робочій машині Sviatoslav'а.
+      - name: Checkout NyxilumDb
+        uses: actions/checkout@v4
+        with:
+          repository: Faneraiy14/NyxilumDb
+          path: NyxilumDb
+
       - name: Checkout anylint
         uses: actions/checkout@v4
         with:
@@ -35,9 +47,19 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # NyxilumLang.csproj цілить ДВА TargetFrameworks
+      # (net10.0-windows;net10.0) - "-f net10.0" ОДНОГО не досить на
+      # Linux-раннері: restore/evaluate все одно падає на
+      # net10.0-windows (NETSDK1100), ПОКИ не додати
+      # "-p:EnableWindowsTargeting=true" (не вмикає Windows Forms
+      # насправді - лише дозволяє SDK ОЦІНИТИ багатоцільовий проєкт
+      # без падіння) - ТА САМА команда, що вже виведена живцем цієї ж
+      # сесії для NyxilumMcp's nyxilum_dev_build (src/dev.js), а тут
+      # знову перевірена (перша версія без -p:EnableWindowsTargeting
+      # реально провалила CI-запуск - не здогадка заздалегідь).
       - name: Build nx CLI
         run: |
-          dotnet build NyxilumLang/src/NyxilumLang/NyxilumLang.csproj -c Release
+          dotnet build NyxilumLang/src/NyxilumLang -f net10.0 -c Release -p:EnableWindowsTargeting=true
           echo "$(pwd)/NyxilumLang/src/NyxilumLang/bin/Release/net10.0" >> "$GITHUB_PATH"
 
       - uses: shivammathur/setup-php@v2
