@@ -4,7 +4,8 @@
 
 import "../lib/engine.nx" {
     GameObject, createGameObject, BoxCollider, boxCollider,
-    Scene, createScene, aabbOverlap, notifyCollision
+    Scene, createScene, aabbOverlap, notifyCollision,
+    updateAllScripts, checkCollisions
 }
 
 struct Bouncer {
@@ -32,7 +33,9 @@ struct SilentScript {
     tag: string
 }
 
-func main() {
+// Базові перевірки: GameObject/Scene/findByName/aabbOverlap/update()/
+// self.go/notifyCollision (напряму, БЕЗ checkCollisions).
+func testBasics() {
     var fail = 0
 
     var scene = createScene()
@@ -66,6 +69,43 @@ func main() {
     notifyCollision(a, b)
     notifyCollision(b, a)
     if (bouncerA.hitCount != 1) { fail = fail + 1; print("FAIL: hitCount після зіткнення") }
+
+    return fail
+}
+
+// checkCollisions()/updateAllScripts() - РЕАЛЬНИЙ регресійний тест на
+// баг, знайдений живцем (22.09.2026): checkCollisions() усередині
+// СЕБЕ викликає aabbOverlap/notifyCollision - файл, що імпортує ЛИШЕ
+// checkCollisions (без цих двох поряд), падає в рантаймі з "Функція
+// 'aabbOverlap' не оголошена" - САМЕ ТАК examples/dodge.nx був
+// поламаний до цього фіксу (виявлено при написанні окремого
+// демо-скрипта, не тестом - цей тест закриває ту прогалину). Нові
+// об'єкти (НЕ 'a'/'b'/SilentScript із testBasics) - у SilentScript
+// немає update(), а updateAllScripts() його вимагає.
+func testFrameStepFunctions() {
+    var fail = 0
+
+    var scene2 = createScene()
+    var c = createGameObject("C", 0, 0)
+    var d = createGameObject("D", 3, 0)
+    c.collider = boxCollider(10, 10)
+    d.collider = boxCollider(10, 10)
+    var bouncerC = Bouncer { go: 0, vx: 0, hitCount: 0 }
+    c.addScript(bouncerC)
+    scene2.addObject(c)
+    scene2.addObject(d)
+
+    updateAllScripts(scene2, 0.5, 0)
+    if (bouncerC.vx != 0.5) { fail = fail + 1; print("FAIL: updateAllScripts не викликав update()") }
+
+    checkCollisions(scene2)
+    if (bouncerC.hitCount != 1) { fail = fail + 1; print("FAIL: checkCollisions не викликав onCollide через AABB-перетин") }
+
+    return fail
+}
+
+func main() {
+    var fail = testBasics() + testFrameStepFunctions()
 
     if (fail == 0) {
         print("УСІ ПЕРЕВІРКИ ПРОЙШЛИ")

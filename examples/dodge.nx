@@ -14,7 +14,7 @@
 import "../lib/engine.nx" {
     GameObject, createGameObject, Renderer, rectRenderer,
     BoxCollider, boxCollider, Scene, createScene,
-    updateAllScripts, checkCollisions, drawAll
+    updateAllScripts, checkCollisions, drawAll, aabbOverlap, notifyCollision
 }
 
 var CANVAS_W = 480
